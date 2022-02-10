@@ -22,6 +22,8 @@
 
 const TF_LOAD_MODEL_URL = "https://raw.githubusercontent.com/takidog/NKUST_Login_Helper/main/model.json";
 
+
+
 // -----init-----
 
 if (window.location.pathname == "/nkust/index.html" || window.location.pathname == "/nkust/") {
@@ -50,11 +52,12 @@ async function main() {
 
 
     notify("辨識中...", "info");
-    await captchaImage(verifyImgEl, (captchaCode) => {
+    await captchaImage(verifyImgEl, (captchaCode, captchaImg) => {
 
         notify("成功", "success");
         captchaCodeInputEl.style.backgroundColor = "#adff2f"
         captchaCodeInputEl.value = captchaCode;
+        console.log(captchaImg);
     })
 
 }
@@ -64,46 +67,43 @@ async function main() {
 
 // -----API-----
 
-async function captchaImage(imgEl, callback) {
-
-    function maxIndex(data) {
-        var _maxValue = -1;
-        var _maxIndex = -1;
-        for (var i = 0; i < data.length; i++) {
-            if (data[i] > _maxValue) {
-                _maxValue = data[i];
-                _maxIndex = i;
-            }
+function maxIndex(data) {
+    var _maxValue = -1;
+    var _maxIndex = -1;
+    for (var i = 0; i < data.length; i++) {
+        if (data[i] > _maxValue) {
+            _maxValue = data[i];
+            _maxIndex = i;
         }
-        return _maxIndex;
     }
+    return _maxIndex;
+}
+
+async function captchaImage(imgEl, callback) {
 
     if (document.getElementById("imageProcess")) {
         document.getElementById("imageProcess").remove();
     }
 
-    // create canvas
-    let cav = document.createElement("canvas");
-    cav.setAttribute("id", "imageProcess");
-    document.getElementsByTagName("head")[0].appendChild(cav);
-
-    let cnv = document.getElementById("imageProcess");
-    cnv.width = 85;
-    cnv.height = 40;
-
-    let cnx = cnv.getContext("2d");
+    // get captcha image
     let captchaImageEl = imgEl;
 
+    // create canvas
+    let cnv = document.createElement("canvas");
+    cnv = document.getElementsByTagName("head")[0].appendChild(cnv)
+    cnv.width = 85;
+    cnv.height = 40;
+    let cnx = cnv.getContext("2d");
+
     async function captchaImageIng() {
-        // console.log("captchaCode")
-        // console.log(captchaImage.getImageData)
 
-
+        // get pixels data
         cnx.drawImage(captchaImageEl, 0, 0);
+        let pixels = cnx
+            .getImageData(0, 0, cnx.canvas.width, cnx.canvas.height)
+            .data;
 
         // convert grayscale
-        let imgData = cnx.getImageData(0, 0, cnx.canvas.width, cnx.canvas.height);
-        let pixels = imgData.data;
         let grayscaleImg = [];
         for (var i = 0; i < pixels.length; i += 4) {
             let lightness = parseInt((pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3);
@@ -112,37 +112,18 @@ async function captchaImage(imgEl, callback) {
             //pixels[i + 2] = lightness;
             grayscaleImg.push(lightness / 255);
         }
-        //cnx.putImageData(imgData, 0, 0);
 
+        // reshape pixels(tensor1d:85*40) -> image(width:85,height:40)
+        let image = []
+        while (grayscaleImg.length) image.push(grayscaleImg.splice(0, 85));
+
+        // split char (pixel)
         let charDataList = [[], [], [], []];
-        let image = [];
-        for (i = 0; i < grayscaleImg.length; i++) {
-            if (image[Math.floor(i / 85)] === undefined) {
-                image.push([]);
-            }
-            image[Math.floor(i / 85)].push(grayscaleImg[i]);
-        }
-
-        for (i = 0; i < image.length; i++) {
-            for (var x = 0; x < image[i].length; x++) {
-                if (x < 21) {
-                    charDataList[0].push(image[i][x]);
-                    continue;
-                }
-                if (x >= 21 && x < 42) {
-                    charDataList[1].push(image[i][x]);
-                    continue;
-                }
-                if (x >= 42 && x < 63) {
-                    charDataList[2].push(image[i][x]);
-                    continue;
-                }
-                if (x >= 63 && x < 84) {
-                    charDataList[3].push(image[i][x]);
-                    continue;
-                }
-            }
-        }
+        image.forEach((imagePixelLine) => {
+            charDataList.forEach((charPixel) => {
+                charPixel.push(imagePixelLine.splice(0, 21));
+            })
+        });
 
         let charResult = [
             "A", "B", "C", "D", "E",
@@ -162,7 +143,7 @@ async function captchaImage(imgEl, callback) {
                 .data();
             captchaCode += charResult[maxIndex(a)];
         }
-        callback(captchaCode)
+        callback(captchaCode, cnv.toDataURL())
 
     };
 
@@ -173,6 +154,7 @@ async function captchaImage(imgEl, callback) {
 }
 
 
+// -----run-----
 
 (async () => await main())()
 
